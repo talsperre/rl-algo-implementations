@@ -151,6 +151,7 @@ class DQNTrainer(object):
         num_steps = 0
         episode_rewards = []
         episode_loss = []
+        start_time = time.time()
         for episode in range(num_episodes):
             self.agent.reset()
             episode_len = 0.0
@@ -172,16 +173,18 @@ class DQNTrainer(object):
                     episode_loss.append(self.total_loss / episode_len)
                     self.total_reward = 0.0
                     self.total_loss = 0.0
-                    print(episode)
                     break
+            
             # Remove magic number below
             if episode % 20 == 0:
                 avg_reward = np.mean(episode_rewards[-100:])
                 avg_loss = np.mean(np.mean(episode_loss[-100:]))
-                print("-"*100)
+                print("Num Episodes: {}, total steps: {}, epsilon: {}".format(episode, num_steps, epsilon))
                 print("Average reward over last 100 episodes: {}".format(avg_reward))
                 print("Average loss over last 100 episodes: {}".format(avg_loss))
-                print("Total steps: {}, epsilon: {}".format(num_steps, epsilon))
+                print("Time taken: {}".format(time.time() - start_time))
+                print("-"*100)
+                start_time = time.time()
                 if avg_reward > best_reward and episode > 100:
                     best_reward = avg_reward
                     self.save_current_state(episode)
