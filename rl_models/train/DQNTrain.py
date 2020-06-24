@@ -54,7 +54,7 @@ class DQNTrainer(object):
         self.device = args.device
         self.save_dir = args.save_dir
         self.replay_memory = RingBuffer(self.replay_size)
-        self.agent = DQNAgent(self.env, self.replay_memory)
+        self.agent = DQNAgent(self.env, self.device, self.replay_memory)
         self.policy_net, self.target_net = make_net([4, 84, 84], self.env.action_space.n)
         self.num_steps = 0
         self.total_reward = 0.0

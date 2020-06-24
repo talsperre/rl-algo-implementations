@@ -4,8 +4,9 @@ np.random.seed(42)
 
 
 class DQNAgent(object):
-    def __init__(self, env, replay_memory):
+    def __init__(self, env, device, replay_memory):
         self.env = env
+        self.device = device
         self.replay_memory = replay_memory
         self.reset()
     
@@ -28,7 +29,7 @@ class DQNAgent(object):
         with torch.no_grad():
             # Need to normalize inputs to range of 0-1
             inp = torch.tensor(self.state, dtype=torch.float32) / 255.0
-            inp = inp.unsqueeze(dim=0)
+            inp = inp.unsqueeze(dim=0).to(self.device)
             out = net(inp)
             _, idx = torch.max(out, dim=1)
             action = int(idx.item())
