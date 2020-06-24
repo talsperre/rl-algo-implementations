@@ -11,6 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
+from tqdm import tqdm
 from datetime import datetime
 from ..agents.DQNAgent import DQNAgent
 from ..models.AtariCNN import AtariCNN
@@ -80,7 +81,7 @@ class DQNTrainer(object):
             self.optimizer = optim.SGD(self.policy_net.parameters(), lr=args.lr, momentum=args.momentum)
     
     def populate(self, steps):
-        for i in range(steps):
+        for i in tqdm(range(steps)):
             self.agent.play_step(self.policy_net, epsilon=1.0)
     
     def sample_batch(self):
