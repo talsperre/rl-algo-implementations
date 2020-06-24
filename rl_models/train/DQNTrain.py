@@ -86,11 +86,11 @@ class DQNTrainer(object):
     def sample_batch(self):
         sample = self.replay_memory.sample(self.batch_size)
         sample = self.transition(*zip(*sample))
-        states = torch.Tensor(sample.state).type(torch.float32)
-        actions = torch.Tensor(sample.action).type(torch.LongTensor)
-        rewards = torch.Tensor(sample.reward).type(torch.float32)
-        next_states = torch.Tensor(sample.next_state).type(torch.float32)
-        done = torch.Tensor(tuple(map(lambda s: s is not False, sample.done))).type(torch.LongTensor)
+        states = torch.Tensor(sample.state).type(torch.float32).to(self.device)
+        actions = torch.Tensor(sample.action).type(torch.LongTensor).to(self.device)
+        rewards = torch.Tensor(sample.reward).type(torch.float32).to(self.device)
+        next_states = torch.Tensor(sample.next_state).type(torch.float32).to(self.device)
+        done = torch.Tensor(tuple(map(lambda s: s is not False, sample.done))).type(torch.LongTensor).to(self.device)
         return states, actions, rewards, next_states, done
 
     def update_epsilon(self, steps_done):
