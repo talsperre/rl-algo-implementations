@@ -15,6 +15,7 @@ from rl_models.common.wrappers.AtariWrappers import wrap_deepmind, wrap_pytorch
 random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def make_env(env_id):
     env = gym.make(env_id)
@@ -34,7 +35,7 @@ class TestDQNAgent(unittest.TestCase):
         env = make_env("BreakoutDeterministic-v4")
         PolicyNet, TargetNet = make_net([4, 84, 84], env.action_space.n)
         replay_memory = RingBuffer(256)
-        agent = DQNAgent(env, replay_memory)
+        agent = DQNAgent(env, replay_memory, device)
         action = agent.select_action(PolicyNet, epsilon=1)
         self.assertIsInstance(action, int)
 
@@ -42,19 +43,29 @@ class TestDQNAgent(unittest.TestCase):
         env = make_env("BreakoutDeterministic-v4")
         PolicyNet, TargetNet = make_net([4, 84, 84], env.action_space.n)
         replay_memory = RingBuffer(256)
-        agent = DQNAgent(env, replay_memory)
+        agent = DQNAgent(env, replay_memory, device)
         action = agent.select_action(PolicyNet, epsilon=0.0)
         self.assertIsInstance(action, int)
     
-    def test_play_step(self):
+    def test_play_single_step(self):
         env = make_env("BreakoutDeterministic-v4")
         PolicyNet, TargetNet = make_net([4, 84, 84], env.action_space.n)
         replay_memory = RingBuffer(256)
-        agent = DQNAgent(env, replay_memory)
+        agent = DQNAgent(env, replay_memory, device)
         reward, is_done = agent.play_step(PolicyNet, epsilon=0.0)
         self.assertIsInstance(reward, float)
         self.assertIsInstance(is_done, bool)
         self.assertEqual(len(agent.replay_memory), 1)
+    
+    def test_play_episode(self):
+        env = gym.make('PongDeterministic-v4')
+        PolicyNet, TargetNet = make_net([4, 84, 84], env.action_space.n)
+        replay_memory = RingBuffer(256)
+        agent = DQNAgent(env, replay_memory, device)
+        is_done = False
+        while not is_done:
+            reward, is_done = agent.play_step(PolicyNet, epsilon=0.0)
+
 
 if __name__=="__main__":
     unittest.main()

@@ -36,14 +36,10 @@ def make_net(inp_shape, num_actions):
 
 
 class DQNTrainer(object):
-    def __init__(self,
-                 env_id,
-                 transition,
-                 args,
-                 ):
-        self.env = make_env(env_id)
-        self.transition = transition
+    def __init__(self, args):
         self.args = args
+        self.env = make_env(args.env_id)
+        self.transition = args.transition
         self.replay_size = args.replay_size
         self.warm_start = args.warm_start
         self.batch_size = args.batch_size
@@ -54,8 +50,9 @@ class DQNTrainer(object):
         self.update_every = args.update_every
         self.device = args.device
         self.save_dir = args.save_dir
+        self.writer = args.writer
         self.replay_memory = RingBuffer(self.replay_size)
-        self.agent = DQNAgent(self.env, self.device, self.replay_memory)
+        self.agent = DQNAgent(self.env, self.replay_memory, self.device)
         self.policy_net, self.target_net = make_net([4, 84, 84], self.env.action_space.n)
         self.num_steps = 0
         self.total_reward = 0.0
@@ -125,7 +122,14 @@ class DQNTrainer(object):
         for param in self.policy_net.parameters():
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
-        return loss.item()
+        if self.args.debug:
+            total_norm = 0.0
+            for p in self.policy_net.parameters():
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+            total_norm = total_norm ** (1. / 2)
+            return loss.item(), total_norm
+        return loss.item(), None
     
     def save_current_state(self, episode):
         save_path = os.path.join(self.save_dir, "episode_{}.pth".format(episode))
@@ -136,7 +140,7 @@ class DQNTrainer(object):
             'optimizer_state_dict': self.optimizer.state_dict(),
             }, save_path)
     
-    def save_logs(self, episode, loss, reward):
+    def write_save_logs(self, episode, loss, reward):
         rewards_path = os.path.join(self.save_dir, "rewards.txt")
         with open(rewards_path, "a") as f:
             writer = csv.writer(f, delimiter=',')
@@ -146,6 +150,9 @@ class DQNTrainer(object):
         with open(loss_path, "a") as f:
             writer = csv.writer(f, delimiter=',')
             writer.writerow([episode, loss])
+        
+        self.writer.add_scalar('training_loss_avg', loss, episode)
+        self.writer.add_scalar('training_reward_avg', reward, episode)
 
     def train_loop(self, num_episodes):
         best_reward = -1e6
@@ -153,6 +160,7 @@ class DQNTrainer(object):
         episode_rewards = []
         episode_loss = []
         start_time = time.time()
+        global_start_time = time.time()
         for episode in range(num_episodes):
             self.agent.reset()
             episode_len = 0.0
@@ -162,7 +170,9 @@ class DQNTrainer(object):
                 epsilon = self.update_epsilon(num_steps)
                 reward, done = self.agent.play_step(self.policy_net, epsilon)
                 self.total_reward += reward
-                loss = self.optimize_model()
+                loss, grad = self.optimize_model()
+                if self.args.debug:
+                    self.writer.add_scalar('grad', grad, num_steps)
                 self.total_loss += loss
                 # Update the target network after every `update_every` steps
                 if num_steps % self.update_every == 0:
@@ -174,8 +184,11 @@ class DQNTrainer(object):
                     episode_loss.append(self.total_loss / episode_len)
                     self.total_reward = 0.0
                     self.total_loss = 0.0
+                    self.writer.add_scalar('episode_len', episode_len, episode)
                     break
             
+            self.writer.add_scalar('training_loss', episode_loss[-1], episode)
+            self.writer.add_scalar('training_reward', episode_rewards[-1], episode)
             # Remove magic number below
             if episode % 20 == 0:
                 avg_reward = np.mean(episode_rewards[-100:])
@@ -184,9 +197,10 @@ class DQNTrainer(object):
                 print("Average reward over last 100 episodes: {}".format(avg_reward))
                 print("Average loss over last 100 episodes: {}".format(avg_loss))
                 print("Time taken: {}".format(time.time() - start_time))
+                print("Total time take: {}".format(time.time() - global_start_time))
                 print("-"*100)
                 start_time = time.time()
                 if avg_reward > best_reward and episode > 100:
                     best_reward = avg_reward
                     self.save_current_state(episode)
-                self.save_logs(episode, avg_reward, avg_reward)
+                self.write_save_logs(episode, avg_reward, avg_reward)

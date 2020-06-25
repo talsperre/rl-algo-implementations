@@ -4,14 +4,20 @@ np.random.seed(42)
 
 
 class DQNAgent(object):
-    def __init__(self, env, device, replay_memory):
+    def __init__(self, env, replay_memory, device):
         self.env = env
-        self.device = device
         self.replay_memory = replay_memory
+        self.device = device        
         self.reset()
     
     def reset(self):
         self.state = self.env.reset()
+
+    def get_state_inp(self, state):
+        state = torch.Tensor(state).type(torch.float32) / 255.0
+        state = state.unsqueeze(dim=0).to(self.device)
+        # print(state.size(), state.max(), state.min())
+        return state
     
     def play_step(self, net, epsilon):
         action = self.select_action(net, epsilon)
@@ -24,13 +30,14 @@ class DQNAgent(object):
 
     def select_action(self, net, epsilon):
         if np.random.random() < epsilon:
-            return self.env.action_space.sample()
-        # Choose the best action based on Q-Value
-        with torch.no_grad():
-            # Need to normalize inputs to range of 0-1
-            inp = torch.tensor(self.state, dtype=torch.float32) / 255.0
-            inp = inp.unsqueeze(dim=0).to(self.device)
-            out = net(inp)
-            _, idx = torch.max(out, dim=1)
-            action = int(idx.item())
-            return action
+            action = self.env.action_space.sample()
+        else:
+            # Choose the best action based on Q-Value
+            with torch.no_grad():
+                # Need to normalize inputs to range of 0-1
+                inp = self.get_state_inp(self.state)
+                out = net(inp)
+                _, idx = torch.max(out, dim=1)
+                action = int(idx.item())
+        # print(action)
+        return action
