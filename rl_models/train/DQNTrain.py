@@ -98,7 +98,6 @@ class DQNTrainer(object):
     
     def get_state_inp(self, states):
         states = states / 255.0
-        states = states.to(self.device)
         return states
     
     def optimize_model(self):
@@ -164,13 +163,16 @@ class DQNTrainer(object):
         for episode in range(num_episodes):
             self.agent.reset()
             episode_len = 0.0
+            st_time1 = time.time()
             while True:
                 num_steps += 1
                 episode_len += 1
                 epsilon = self.update_epsilon(num_steps)
                 reward, done = self.agent.play_step(self.policy_net, epsilon)
                 self.total_reward += reward
+                st_time2 = time.time()
                 loss, grad = self.optimize_model()
+                print("Optimization time: {}".format(time.time() - st_time2))
                 if self.args.debug:
                     self.writer.add_scalar('grad', grad, num_steps)
                 self.total_loss += loss
@@ -186,7 +188,7 @@ class DQNTrainer(object):
                     self.total_loss = 0.0
                     self.writer.add_scalar('episode_len', episode_len, episode)
                     break
-            
+            print("Ep time: {}".format(time.time() - st_time1))
             self.writer.add_scalar('training_loss', episode_loss[-1], episode)
             self.writer.add_scalar('training_reward', episode_rewards[-1], episode)
             # Remove magic number below
