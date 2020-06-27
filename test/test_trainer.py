@@ -50,4 +50,5 @@ args.writer = writer
 
 # dqn_trainer = DQNTrainer("BreakoutDeterministic-v4", Transition, args)
 dqn_trainer = DQNTrainer(args)
-dqn_trainer.train_loop(num_episodes=10000)
+dqn_trainer.train_loop(num_episodes=1)
+# dqn_trainer.train_loop(num_episodes=10000)

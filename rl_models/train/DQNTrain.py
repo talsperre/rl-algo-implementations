@@ -83,12 +83,15 @@ class DQNTrainer(object):
     
     def sample_batch(self):
         sample = self.replay_memory.sample(self.batch_size)
-        sample = self.transition(*zip(*sample))
-        states = torch.Tensor(sample.state).type(torch.float32).to(self.device)
-        actions = torch.Tensor(sample.action).type(torch.LongTensor).to(self.device)
-        rewards = torch.Tensor(sample.reward).type(torch.float32).to(self.device)
-        next_states = torch.Tensor(sample.next_state).type(torch.float32).to(self.device)
-        done = torch.Tensor(tuple(map(lambda s: s is not False, sample.done))).type(torch.LongTensor).to(self.device)
+        states, actions, rewards, next_states, dones = sample
+        states, actions, rewards, next_states, dones = np.array(states), np.array(actions), np.array(rewards), \
+            np.array(next_states), np.array(dones)
+        states = torch.Tensor(states).type(torch.float32).to(self.device) / 255.0
+        actions = torch.Tensor(actions).type(torch.LongTensor).to(self.device)
+        rewards = torch.Tensor(rewards).type(torch.float32).to(self.device)
+        next_states = torch.Tensor(next_states).type(torch.float32).to(self.device) / 255.0
+        done = torch.Tensor(dones).type(torch.bool).to(self.device)
+        return states, actions, rewards, next_states, done
         return states, actions, rewards, next_states, done
 
     def update_epsilon(self, steps_done):
@@ -103,16 +106,18 @@ class DQNTrainer(object):
     def optimize_model(self):
         states, actions, rewards, next_states, dones = self.sample_batch()
         states = self.get_state_inp(states)
-        state_action_vals = self.policy_net(states)
+        # state_action_vals = self.policy_net(states)
         state_action_vals = torch.gather(state_action_vals, 1, actions.unsqueeze(-1)).squeeze(-1)
-
+        print("-"*100)
+        print("dones.sum(): {}".format(dones.sum()))
+        print(dones)
         with torch.no_grad():
-            next_states = self.get_state_inp(next_states)
+            # next_states = self.get_state_inp(next_states)
             out = self.target_net(next_states)
             next_state_action_vals, idx = torch.max(out, dim=1)
             next_state_action_vals[dones] = 0.0
             next_state_action_vals = next_state_action_vals.detach()
-        
+        print(next_state_action_vals)
         target_state_action_vals = rewards + self.gamma * next_state_action_vals
         loss = F.smooth_l1_loss(state_action_vals, target_state_action_vals)
         # Take update step

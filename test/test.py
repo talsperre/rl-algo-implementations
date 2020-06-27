@@ -63,6 +63,10 @@ for i in range(100):
     while not is_done:
         reward, is_done = agent.play_step(PolicyNet, epsilon=0.5)
         tot_reward += reward
-    print(i, tot_reward)
-    lst.append(tot_reward)
-print(np.mean(lst))
+        print(agent.replay_memory.buffer[-1][4])
+    print(agent.replay_memory.buffer[-1][4])
+    print(is_done)
+    break
+#     print(i, tot_reward)
+#     lst.append(tot_reward)
+# print(np.mean(lst))

@@ -16,7 +16,6 @@ class DQNAgent(object):
     def get_state_inp(self, state):
         state = torch.Tensor(state).type(torch.float32) / 255.0
         state = state.unsqueeze(dim=0).to(self.device)
-        # print(state.size(), state.max(), state.min())
         return state
     
     def play_step(self, net, epsilon):
@@ -39,5 +38,4 @@ class DQNAgent(object):
                 out = net(inp)
                 _, idx = torch.max(out, dim=1)
                 action = int(idx.item())
-        # print(action)
         return action
