@@ -38,7 +38,8 @@ class TestRingBuffer(unittest.TestCase):
         for i in range(len(data)):
             exp_replay.append(data[i])
         sample1 = exp_replay.sample(3)
-        self.assertEqual(len(sample1), 3)
+        a, b = sample1
+        self.assertEqual(len(a), 3)
 
 
 if __name__=="__main__":

@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from datetime import datetime
 from ..agents.DQNAgent import DQNAgent
-from ..models.AtariCNN import AtariCNN
+from ..models.AtariCNN import AtariCNN, AtariCNN_bn
 from ..common.utils.RingBuffer import RingBuffer
 from rl_models.common.wrappers.AtariWrappers import wrap_deepmind, wrap_pytorch
 random.seed(42)
@@ -29,9 +29,13 @@ def make_env(env_id):
     env.seed(42)
     return env
 
-def make_net(inp_shape, num_actions):
-    PolicyNet = AtariCNN(inp_shape, num_actions)
-    TargetNet = AtariCNN(inp_shape, num_actions)
+def make_net(inp_shape, num_actions, model_type="cnn_bn"):
+    if model_type == "cnn_bn":
+        PolicyNet = AtariCNN_bn(inp_shape, num_actions)
+        TargetNet = AtariCNN_bn(inp_shape, num_actions)
+    else:
+        PolicyNet = AtariCNN(inp_shape, num_actions)
+        TargetNet = AtariCNN(inp_shape, num_actions)        
     return PolicyNet, TargetNet
 
 
@@ -53,7 +57,7 @@ class DQNTrainer(object):
         self.writer = args.writer
         self.replay_memory = RingBuffer(self.replay_size)
         self.agent = DQNAgent(self.env, self.replay_memory, self.device)
-        self.policy_net, self.target_net = make_net([4, 84, 84], self.env.action_space.n)
+        self.get_model(args)
         self.num_steps = 0
         self.total_reward = 0.0
         self.total_loss = 0.0
@@ -69,12 +73,18 @@ class DQNTrainer(object):
         self.save_dir = os.path.join(self.save_dir, datetime.now().strftime("%d_%m_%Y_%H_%M_%S"))
         os.makedirs(self.save_dir, exist_ok=True)
     
+    def get_model(self, args):
+        if args.model == "CNN_bn":
+            self.policy_net, self.target_net = make_net([4, 84, 84], self.env.action_space.n, "CNN_bn")
+        else:
+            self.policy_net, self.target_net = make_net([4, 84, 84], self.env.action_space.n, "CNN")
+    
     def get_optimizer(self, args):
         if args.optimizer == "Adam":
             self.optimizer = optim.Adam(self.policy_net.parameters(), lr=args.lr, betas=(args.beta1, args.beta2))
         elif args.optimizer == "RMSProp":
             self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=args.lr, momentum=args.momentum)
-        elif args.opltimizer == "SGD":
+        elif args.optimizer == "SGD":
             self.optimizer = optim.SGD(self.policy_net.parameters(), lr=args.lr, momentum=args.momentum)
     
     def populate(self, steps):
@@ -83,12 +93,14 @@ class DQNTrainer(object):
     
     def sample_batch(self):
         sample = self.replay_memory.sample(self.batch_size)
-        sample = self.transition(*zip(*sample))
-        states = torch.Tensor(sample.state).type(torch.float32).to(self.device)
-        actions = torch.Tensor(sample.action).type(torch.LongTensor).to(self.device)
-        rewards = torch.Tensor(sample.reward).type(torch.float32).to(self.device)
-        next_states = torch.Tensor(sample.next_state).type(torch.float32).to(self.device)
-        done = torch.Tensor(tuple(map(lambda s: s is not False, sample.done))).type(torch.LongTensor).to(self.device)
+        states, actions, rewards, next_states, dones = sample
+        states, actions, rewards, next_states, dones = np.array(states), np.array(actions), np.array(rewards), \
+            np.array(next_states), np.array(dones)
+        states = torch.Tensor(states).type(torch.float32).to(self.device) / 255.0
+        actions = torch.Tensor(actions).type(torch.LongTensor).to(self.device)
+        rewards = torch.Tensor(rewards).type(torch.float32).to(self.device)
+        next_states = torch.Tensor(next_states).type(torch.float32).to(self.device) / 255.0
+        done = torch.Tensor(dones).type(torch.bool).to(self.device)
         return states, actions, rewards, next_states, done
 
     def update_epsilon(self, steps_done):
@@ -96,18 +108,12 @@ class DQNTrainer(object):
             math.exp(-1. * steps_done / self.epsilon_decay)
         return epsilon_threshold
     
-    def get_state_inp(self, states):
-        states = states / 255.0
-        return states
-    
     def optimize_model(self):
         states, actions, rewards, next_states, dones = self.sample_batch()
-        states = self.get_state_inp(states)
         state_action_vals = self.policy_net(states)
         state_action_vals = torch.gather(state_action_vals, 1, actions.unsqueeze(-1)).squeeze(-1)
 
         with torch.no_grad():
-            next_states = self.get_state_inp(next_states)
             out = self.target_net(next_states)
             next_state_action_vals, idx = torch.max(out, dim=1)
             next_state_action_vals[dones] = 0.0
@@ -115,13 +121,20 @@ class DQNTrainer(object):
         
         target_state_action_vals = rewards + self.gamma * next_state_action_vals
         loss = F.smooth_l1_loss(state_action_vals, target_state_action_vals)
+        
         # Take update step
         self.optimizer.zero_grad()
         loss.backward()
+
+        # Clip gradients bw -1 and 1
         for param in self.policy_net.parameters():
             param.grad.data.clamp_(-1, 1)
+        
+        # Take optimizer step
         self.optimizer.step()
         if self.args.debug:
+            # Compute the sum of L2 norm of all the gradients
+            # to verify if gradients are exploding or not
             total_norm = 0.0
             for p in self.policy_net.parameters():
                 param_norm = p.grad.data.norm(2)
@@ -154,28 +167,25 @@ class DQNTrainer(object):
         self.writer.add_scalar('training_reward_avg', reward, episode)
 
     def train_loop(self, num_episodes):
-        best_reward = -1e6
-        num_steps = 0
-        episode_rewards = []
-        episode_loss = []
-        start_time = time.time()
+        num_steps, best_reward = 0, -1e6
+        episode_loss, episode_rewards = [], []
         global_start_time = time.time()
         for episode in range(num_episodes):
+            ep_start_time = time.time()
             self.agent.reset()
             episode_len = 0.0
-            st_time1 = time.time()
             while True:
                 num_steps += 1
                 episode_len += 1
                 epsilon = self.update_epsilon(num_steps)
                 reward, done = self.agent.play_step(self.policy_net, epsilon)
                 self.total_reward += reward
-                st_time2 = time.time()
+                
                 loss, grad = self.optimize_model()
-                print("Optimization time: {}".format(time.time() - st_time2))
                 if self.args.debug:
                     self.writer.add_scalar('grad', grad, num_steps)
                 self.total_loss += loss
+                
                 # Update the target network after every `update_every` steps
                 if num_steps % self.update_every == 0:
                     self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -188,18 +198,20 @@ class DQNTrainer(object):
                     self.total_loss = 0.0
                     self.writer.add_scalar('episode_len', episode_len, episode)
                     break
-            print("Ep time: {}".format(time.time() - st_time1))
+            
+            print("Episode Num: {}, Episode time: {}".format(episode, time.time() - ep_start_time))
+            print("Episode Loss: {}, Episode Reward: {}".format(episode_loss[-1], episode_rewards[-1]))
             self.writer.add_scalar('training_loss', episode_loss[-1], episode)
             self.writer.add_scalar('training_reward', episode_rewards[-1], episode)
             # Remove magic number below
             if episode % 20 == 0:
                 avg_reward = np.mean(episode_rewards[-100:])
                 avg_loss = np.mean(np.mean(episode_loss[-100:]))
+                print("-"*100)
                 print("Num Episodes: {}, total steps: {}, epsilon: {}".format(episode, num_steps, epsilon))
                 print("Average reward over last 100 episodes: {}".format(avg_reward))
                 print("Average loss over last 100 episodes: {}".format(avg_loss))
-                print("Time taken: {}".format(time.time() - start_time))
-                print("Total time take: {}".format(time.time() - global_start_time))
+                print("Total time taken: {}".format(time.time() - global_start_time))
                 print("-"*100)
                 start_time = time.time()
                 if avg_reward > best_reward and episode > 100:
