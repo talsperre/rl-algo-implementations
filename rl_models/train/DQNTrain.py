@@ -14,7 +14,8 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from datetime import datetime
 from ..agents.DQNAgent import DQNAgent
-from ..models.AtariCNN import AtariCNN, AtariCNN_bn
+from ..models.AtariCNN import AtariCNN
+from ..models.AtariCNN_bn import AtariCNN_bn
 from ..common.utils.RingBuffer import RingBuffer
 from rl_models.common.wrappers.AtariWrappers import wrap_deepmind, wrap_pytorch
 random.seed(42)
@@ -112,15 +113,11 @@ class DQNTrainer(object):
         states, actions, rewards, next_states, dones = self.sample_batch()
         state_action_vals = self.policy_net(states)
         state_action_vals = torch.gather(state_action_vals, 1, actions.unsqueeze(-1)).squeeze(-1)
-        print("-"*100)
-        print("dones.sum(): {}".format(dones.sum()))
-        print(dones)
         with torch.no_grad():
             out = self.target_net(next_states)
             next_state_action_vals, idx = torch.max(out, dim=1)
             next_state_action_vals[dones] = 0.0
             next_state_action_vals = next_state_action_vals.detach()
-        print(next_state_action_vals)
         target_state_action_vals = rewards + self.gamma * next_state_action_vals
         loss = F.smooth_l1_loss(state_action_vals, target_state_action_vals)
         
@@ -182,11 +179,11 @@ class DQNTrainer(object):
                 epsilon = self.update_epsilon(num_steps)
                 reward, done = self.agent.play_step(self.policy_net, epsilon)
                 self.total_reward += reward
-                
-                loss, grad = self.optimize_model()
-                if self.args.debug:
-                    self.writer.add_scalar('grad', grad, num_steps)
-                self.total_loss += loss
+                if num_steps % 4 == 0:
+                    loss, grad = self.optimize_model()
+                    if self.args.debug:
+                        self.writer.add_scalar('grad', grad, num_steps)
+                    self.total_loss += loss
                 
                 # Update the target network after every `update_every` steps
                 if num_steps % self.update_every == 0:

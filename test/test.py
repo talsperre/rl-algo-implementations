@@ -51,22 +51,3 @@ env.seed(42)
 #     lst.append(tot_reward)
 # print(np.mean(lst))
 # disp_frames(state)
-
-env = make_env('PongDeterministic-v4')
-PolicyNet, TargetNet = make_net([4, 84, 84], env.action_space.n)
-replay_memory = RingBuffer(10000)
-agent = DQNAgent(env, replay_memory, device)
-lst = []
-for i in range(100):
-    is_done = False
-    tot_reward = 0.0
-    while not is_done:
-        reward, is_done = agent.play_step(PolicyNet, epsilon=0.5)
-        tot_reward += reward
-        print(agent.replay_memory.buffer[-1][4])
-    print(agent.replay_memory.buffer[-1][4])
-    print(is_done)
-    break
-#     print(i, tot_reward)
-#     lst.append(tot_reward)
-# print(np.mean(lst))

@@ -50,5 +50,5 @@ args.transition = Transition
 args.writer = writer
 
 dqn_trainer = DQNTrainer(args)
-dqn_trainer.train_loop(num_episodes=1)
-# dqn_trainer.train_loop(num_episodes=10000)
+# dqn_trainer.train_loop(num_episodes=1)
+dqn_trainer.train_loop(num_episodes=10000)
