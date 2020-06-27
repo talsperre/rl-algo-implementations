@@ -4,16 +4,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class AtariCNN(nn.Module):
+class AtariCNN_bn(nn.Module):
     def __init__(self, inp_shape, num_actions):
         super(AtariCNN, self).__init__()
         # Conv Layers to downsample image
         self.features = nn.Sequential(
             nn.Conv2d(inp_shape[0], 32, 8, 4),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.Conv2d(32, 64, 4, 2),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.Conv2d(64, 64, 3, 1),
+            nn.BatchNorm2d(64),
             nn.ReLU()
         )
         self.head = nn.Sequential(
